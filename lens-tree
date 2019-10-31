@@ -6,13 +6,6 @@ const fs = require('mz/fs');
 const execa = require('execa');
 
 
-console.error("\nprocess.env:");
-console.error(process.env);
-console.error("\nprocess.argv:");
-console.error(process.argv);
-console.error("\nprocess.cwd():");
-console.error(process.cwd());
-
 outputResult(lensTree(process.argv[2]));
 
 async function lensTree(treeHash) {
@@ -74,9 +67,6 @@ async function lensTree(treeHash) {
 
         composerRequire[`${spec.vendor}/${spec.project}`] = spec.version;
     }
-
-    console.error("\ncomposerRequire:");
-    console.error(composerRequire);
 
 
     // delete anything on disk and not in index
