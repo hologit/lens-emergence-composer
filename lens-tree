@@ -123,6 +123,7 @@ async function lensTree(treeHash) {
 
 
     // read classes and bootstrap files from generated autoload files
+    console.error('Reading composer manifests');
     const { stdout: composerOutputJson } = await execa('php', [
         '-r',
         `
@@ -136,6 +137,7 @@ async function lensTree(treeHash) {
 
 
     // write PHP classes
+    console.error('Populating php-classes');
     for (const className in composerOutput.classmap) {
         const blob = await repo.writeBlobFromFile(composerOutput.classmap[className]);
         outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`);
@@ -143,6 +145,7 @@ async function lensTree(treeHash) {
 
 
     // write PHP bootstrap files
+    console.error('Populating php-bootstraps');
     for (const bootstrapHash in composerOutput.files) {
         const blob = await repo.writeBlobFromFile(composerOutput.files[bootstrapHash]);
         outputTree.writeChild(`php-bootstraps/composer-${bootstrapHash}.php`, blob);
