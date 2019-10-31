@@ -18,16 +18,6 @@ do_setup_environment() {
 }
 
 do_build() {
-  # build_line "Copying core (excluding vendor)"
-  # pushd "${PLAN_CONTEXT}" > /dev/null
-  # find . \
-  #   -maxdepth 1 -mindepth 1 \
-  #   -not -name 'plan.sh' \
-  #   -not -name 'vendor' \
-  #   -not -name '.git*' \
-  #   -exec cp -r '{}' "${CACHE_PATH}/{}" \;
-  # popd > /dev/null
-
   pushd "${CACHE_PATH}" > /dev/null
 
   build_line "Generating lens script"
@@ -39,11 +29,11 @@ do_build() {
   cp -v "${PLAN_CONTEXT}"/package{,-lock}.json ./
   npm install
 
-  build_line "Running: composer require wikimedia/composer-merge-plugin"
-  composer require wikimedia/composer-merge-plugin \
-    --no-interaction \
-    --optimize-autoloader \
-    --classmap-authoritative
+  # build_line "Running: composer require wikimedia/composer-merge-plugin"
+  # composer require wikimedia/composer-merge-plugin \
+  #   --no-interaction \
+  #   --optimize-autoloader \
+  #   --classmap-authoritative
 
   popd > /dev/null
 }
