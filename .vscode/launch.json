@@ -1,0 +1,25 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "attach",
+            "skipFiles": [
+                "<node_internals>/**/*.js"
+            ],
+
+            "name": "attach to lens-composer",
+            "port": 9229,
+            "restart": true,
+            "trace": true,
+            "localRoot": "${workspaceFolder:lens-composer}",
+            "remoteRoot": "/src/lens-composer",
+            "sourceMapPathOverrides": {
+                "/src/hologit": "${workspaceRoot:hologit}"
+            }
+        }
+    ]
+}

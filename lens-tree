@@ -1,0 +1,193 @@
+#!/bin/node --inspect-brk=0.0.0.0
+
+const { Repo } = require('hologit');
+const TOML = require('@iarna/toml');
+const fs = require('mz/fs');
+const execa = require('execa');
+
+
+console.error("\nprocess.env:");
+console.error(process.env);
+console.error("\nprocess.argv:");
+console.error(process.argv);
+console.error("\nprocess.cwd():");
+console.error(process.cwd());
+
+outputResult(lensTree(process.argv[2]));
+
+async function lensTree(treeHash) {
+
+    // load env/input
+    const repo = await Repo.getFromEnvironment();
+    const git = await repo.getGit();
+    const tree = await repo.createTreeFromRef(treeHash);
+    const requiresTree = await tree.getChild('composer-requires');
+
+
+    // init output
+    const outputTree = repo.createTree();
+
+
+    // check env/input
+    if (!requiresTree) {
+        return outputTree;
+    }
+
+    if (!requiresTree.isTree) {
+        throw new Error('./composer-requires must be a tree');
+    }
+
+
+    // extract definitions from tree
+    const composerRequire = {};
+    const requiresChildren = await requiresTree.getBlobMap();
+    const childPathRe = /^(?<vendor>[^/]+)\/(?<project>[^.]+).toml$/;
+
+    for (const childPath in requiresChildren) {
+        const childPathMatch = childPathRe.exec(childPath);
+        if (!childPathMatch) {
+            console.error(`${childPath} does not match <vendor>/<project>.toml`);
+            continue;
+        }
+
+        const { vendor, project } = childPathMatch.groups;
+
+        let parsed;
+        try {
+            parsed = TOML.parse(await requiresChildren[childPath].read());
+        } catch (err) {
+            throw new Error(`could not parse ${childPath}: ${err.message}`);
+        }
+
+        const spec = parsed['composer-requires'];
+        if (!spec) {
+            throw new Error(`${childPath} does not contain [composer-requires] table`);
+        }
+
+        if (!spec.vendor) {
+            spec.vendor = vendor;
+        }
+
+        if (!spec.project) {
+            spec.project = project;
+        }
+
+        composerRequire[`${spec.vendor}/${spec.project}`] = spec.version;
+    }
+
+    console.error("\ncomposerRequire:");
+    console.error(composerRequire);
+
+
+    // delete anything on disk and not in index
+    console.error('Cleaning working tree');
+    await git.clean({ d: true, force: true });
+
+
+    // generate composer manifest
+    console.error('Generating composer.json');
+    await fs.writeFile('composer.json', Buffer.from(JSON.stringify({ require: composerRequire })));
+
+
+    // use composer to resolve and install dependencies
+    console.error('Running composer install');
+    let composerExitCode;
+    try {
+        const composerProcess = execa('composer', [
+            'install',
+            // '--no-autoloader',
+            '--no-interaction',
+            '--no-progress',
+            '--no-scripts',
+            '--no-dev',
+            '--no-suggest',
+            // '--prefer-source',
+            '--classmap-authoritative'
+        ], {
+            env: {
+                COMPOSER_ALLOW_SUPERUSER: true
+            }
+        });
+        composerProcess.stderr.pipe(process.stderr);
+        composerProcess.stdout.pipe(process.stderr);
+        ({ exitCode: composerExitCode } = await composerProcess);
+    } catch (err) {
+        console.error(`Composer install failed: ${err.message}`);
+        process.exit(1);
+    }
+
+    if (composerExitCode !== 0) {
+        console.error(`composer install failed with code ${composerExitCode}`);
+        process.exit(exitCode);
+    }
+
+
+    // read classes and bootstrap files from generated autoload files
+    const { stdout: composerOutputJson } = await execa('php', [
+        '-r',
+        `
+            echo json_encode([
+                'classmap' => require('vendor/composer/autoload_classmap.php'),
+                'files' => require('vendor/composer/autoload_files.php')
+            ]);
+        `
+    ]);
+    const composerOutput = JSON.parse(composerOutputJson);
+
+
+    // write PHP classes
+    for (const className in composerOutput.classmap) {
+        const blob = await repo.writeBlobFromFile(composerOutput.classmap[className]);
+        outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`);
+    }
+
+
+    // write PHP bootstrap files
+    for (const bootstrapHash in composerOutput.files) {
+        const blob = await repo.writeBlobFromFile(composerOutput.files[bootstrapHash]);
+        outputTree.writeChild(`php-bootstraps/composer-${bootstrapHash}.php`, blob);
+    }
+
+
+    // {
+    //     "require": {
+    //         "wikimedia/composer-merge-plugin": "dev-master"
+    //     },
+    //     "extra": {
+    //         "merge-plugin": {
+    //             "include": [
+    //                 "composer.local.json",
+    //                 "extensions/*/composer.json"
+    //             ],
+    //             "require": [
+    //                 "submodule/composer.json"
+    //             ],
+    //             "recurse": true,
+    //             "replace": false,
+    //             "ignore-duplicates": false,
+    //             "merge-dev": true,
+    //             "merge-extra": false,
+    //             "merge-extra-deep": false,
+    //             "merge-scripts": false
+    //         }
+    //     }
+    // }
+
+    return outputTree;
+}
+
+
+async function outputResult(result) {
+    result = await result;
+
+    console.error("\n\nresult:");
+
+    if (result.isTree) {
+        console.log(await result.write());
+        process.exit(0);
+        return;
+    }
+
+    console.error('no result');
+    process.exit(1);
+}
