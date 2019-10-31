@@ -1,4 +1,4 @@
-#!/bin/node --inspect-brk=0.0.0.0
+#!/bin/node
 
 const { Repo } = require('hologit');
 const TOML = require('@iarna/toml');
