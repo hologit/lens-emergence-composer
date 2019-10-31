@@ -140,7 +140,7 @@ async function lensTree(treeHash) {
     console.error('Populating php-classes');
     for (const className in composerOutput.classmap) {
         const blob = await repo.writeBlobFromFile(composerOutput.classmap[className]);
-        outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`);
+        outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`, blob);
     }
 
 
