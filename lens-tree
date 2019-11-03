@@ -114,70 +114,18 @@ async function lensTree(treeHash) {
     }
 
 
-    // read classes and bootstrap files from generated autoload files
-    console.error('Reading composer manifests');
-    const { stdout: composerOutputJson } = await execa('php', [
-        '-r',
-        `
-            echo json_encode([
-                'classmap' => require('vendor/composer/autoload_classmap.php'),
-                'files' => require('vendor/composer/autoload_files.php')
-            ]);
-        `
-    ]);
-    const composerOutput = JSON.parse(composerOutputJson);
+    // capture entire vendor directory
+    console.error('Populating php-bootstraps/composer-requires/');
+    await git.add({ force: true }, 'vendor');
+    const vendorTreeHash = await git.writeTree({ prefix: 'vendor' });
+    const vendorTree = await repo.createTreeFromRef(vendorTreeHash);
+    await outputTree.writeChild('php-bootstraps/composer-requires', vendorTree);
 
 
-    // build outputTree
-    const writePromises = [];
-
-
-    // write PHP classes and build list of paths to exclude from bootstraps tree
-    const vendorClassFilePaths = new Set();
-    console.error('Populating php-classes/');
-    for (const className in composerOutput.classmap) {
-        const classFilePath = composerOutput.classmap[className];
-        vendorClassFilePaths.add(classFilePath);
-
-        writePromises.push(
-            repo.writeBlobFromFile(classFilePath)
-                .then(blob => outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`, blob))
-        );
-    }
-
-
-    // copy all non-class PHP files into php-bootstraps/composer-requires
-    console.error('Populating php-bootstraps/');
-    const miscPhpFiles = await glob(`${process.cwd()}/vendor/*/**/*.php`, { nodir: true, ignore: ['**/bin/**','**/tests/**'] });
-    for (const filePath of miscPhpFiles) {
-        if (vendorClassFilePaths.has(filePath)) {
-            continue;
-        }
-
-        const fileRelPath = path.relative('./vendor', filePath);
-        writePromises.push(
-            repo.writeBlobFromFile(filePath)
-                .then(blob => outputTree.writeChild(`php-bootstraps/composer-requires/${fileRelPath}`, blob))
-        );
-    }
-
-
-    // write PHP bootstrap files
+    // write PHP bootstraps script for composer-requires
     console.error('Generating php-bootstraps/composer-requires.php');
-    const loaderCodeLines = ['<?php'];
-    for (const bootstrapHash in composerOutput.files) {
-        const fileRelPath = path.relative('./vendor', composerOutput.files[bootstrapHash]);
-        loaderCodeLines.push(`require_once __DIR__.'/composer-requires/${fileRelPath}';`);
-    }
-
-    writePromises.push(
-        repo.writeBlob(loaderCodeLines.join('\n'))
-            .then(blob => outputTree.writeChild(`php-bootstraps/composer-requires.php`, blob))
-    );
-
-
-    // wait for all writes to finish
-    await Promise.all(writePromises);
+    const loaderBlob = await repo.writeBlob("<?php\nrequire_once __DIR__.'/composer-requires/autoload.php';");
+    await outputTree.writeChild(`php-bootstraps/composer-requires.php`, loaderBlob);
 
 
     return outputTree;
@@ -188,9 +136,7 @@ async function outputResult(result) {
     result = await result;
 
     if (result.isTree) {
-        const treeHash = await result.write();
-        console.error(`\n\nFinished building tree: ${treeHash}`);
-        console.log(treeHash);
+        console.log(await result.write());
         process.exit(0);
         return;
     }
