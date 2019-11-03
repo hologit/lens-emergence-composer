@@ -13,6 +13,9 @@ Process a `composer-requires/` tree and/or `composer.json` file to project PHP c
 2. Symlink built package to working tree sources:
 
     ```bash
+    hab pkg binlink core/node
+    cd /src/lens-composer
+    npm install
     ln -sf /src/lens-composer/lens-tree $(hab pkg path holo/lens-composer)/bin/lens-tree
     rm -rf $(hab pkg path holo/lens-composer)/node_modules
     ln -sf /src/lens-composer/node_modules $(hab pkg path holo/lens-composer)/node_modules
