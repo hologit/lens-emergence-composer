@@ -1,6 +1,6 @@
 pkg_name=lens-composer
 pkg_origin=holo
-pkg_version="0.2.0"
+pkg_version="0.2.1"
 pkg_maintainer="Chris Alfano <chris@jarv.us>"
 pkg_license=("MIT")
 pkg_build_deps=(
