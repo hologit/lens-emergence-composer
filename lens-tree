@@ -187,10 +187,10 @@ async function lensTree(treeHash) {
 async function outputResult(result) {
     result = await result;
 
-    console.error("\n\nresult:");
-
     if (result.isTree) {
-        console.log(await result.write());
+        const treeHash = await result.write();
+        console.error(`\n\nFinished building tree: ${treeHash}`);
+        console.log(treeHash);
         process.exit(0);
         return;
     }
