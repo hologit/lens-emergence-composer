@@ -128,14 +128,21 @@ async function lensTree(treeHash) {
     const composerOutput = JSON.parse(composerOutputJson);
 
 
+    // build outputTree
+    const writePromises = [];
+
+
     // write PHP classes and build list of paths to exclude from bootstraps tree
     const vendorClassFilePaths = new Set();
     console.error('Populating php-classes/');
     for (const className in composerOutput.classmap) {
         const classFilePath = composerOutput.classmap[className];
-        const blob = await repo.writeBlobFromFile(classFilePath);
-        outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`, blob);
         vendorClassFilePaths.add(classFilePath);
+
+        writePromises.push(
+            repo.writeBlobFromFile(classFilePath)
+                .then(blob => outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`, blob))
+        );
     }
 
 
@@ -148,8 +155,10 @@ async function lensTree(treeHash) {
         }
 
         const fileRelPath = path.relative('./vendor', filePath);
-        const blob = await repo.writeBlobFromFile(filePath);
-        outputTree.writeChild(`php-bootstraps/composer-requires/${fileRelPath}`, blob);
+        writePromises.push(
+            repo.writeBlobFromFile(filePath)
+                .then(blob => outputTree.writeChild(`php-bootstraps/composer-requires/${fileRelPath}`, blob))
+        );
     }
 
 
@@ -160,8 +169,15 @@ async function lensTree(treeHash) {
         const fileRelPath = path.relative('./vendor', composerOutput.files[bootstrapHash]);
         loaderCodeLines.push(`require_once __DIR__.'/composer-requires/${fileRelPath}';`);
     }
-    const loaderBlob = await repo.writeBlob(loaderCodeLines.join('\n'));
-    outputTree.writeChild(`php-bootstraps/composer-requires.php`, loaderBlob);
+
+    writePromises.push(
+        repo.writeBlob(loaderCodeLines.join('\n'))
+            .then(blob => outputTree.writeChild(`php-bootstraps/composer-requires.php`, blob))
+    );
+
+
+    // wait for all writes to finish
+    await Promise.all(writePromises);
 
 
     return outputTree;
