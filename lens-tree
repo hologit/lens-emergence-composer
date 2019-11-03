@@ -1,8 +1,10 @@
-#!/bin/node
+#!/bin/node --inspect-brk=0.0.0.0:9229
 
 const { Repo } = require('hologit');
 const TOML = require('@iarna/toml');
 const fs = require('mz/fs');
+const path = require('path');
+const glob = require('mz-modules/glob');
 const execa = require('execa');
 
 
@@ -126,20 +128,40 @@ async function lensTree(treeHash) {
     const composerOutput = JSON.parse(composerOutputJson);
 
 
-    // write PHP classes
-    console.error('Populating php-classes');
+    // write PHP classes and build list of paths to exclude from bootstraps tree
+    const vendorClassFilePaths = new Set();
+    console.error('Populating php-classes/');
     for (const className in composerOutput.classmap) {
-        const blob = await repo.writeBlobFromFile(composerOutput.classmap[className]);
+        const classFilePath = composerOutput.classmap[className];
+        const blob = await repo.writeBlobFromFile(classFilePath);
         outputTree.writeChild(`php-classes/${className.replace(/\\/g, '/')}.php`, blob);
+        vendorClassFilePaths.add(classFilePath);
+    }
+
+
+    // copy all non-class PHP files into php-bootstraps/composer-requires
+    console.error('Populating php-bootstraps/');
+    const miscPhpFiles = await glob(`${process.cwd()}/vendor/*/**/*.php`, { nodir: true, ignore: ['**/bin/**','**/tests/**'] });
+    for (const filePath of miscPhpFiles) {
+        if (vendorClassFilePaths.has(filePath)) {
+            continue;
+        }
+
+        const fileRelPath = path.relative('./vendor', filePath);
+        const blob = await repo.writeBlobFromFile(filePath);
+        outputTree.writeChild(`php-bootstraps/composer-requires/${fileRelPath}`, blob);
     }
 
 
     // write PHP bootstrap files
-    console.error('Populating php-bootstraps');
+    console.error('Generating php-bootstraps/composer-requires.php');
+    const loaderCodeLines = ['<?php'];
     for (const bootstrapHash in composerOutput.files) {
-        const blob = await repo.writeBlobFromFile(composerOutput.files[bootstrapHash]);
-        outputTree.writeChild(`php-bootstraps/composer-${bootstrapHash}.php`, blob);
+        const fileRelPath = path.relative('./vendor', composerOutput.files[bootstrapHash]);
+        loaderCodeLines.push(`require_once __DIR__.'/composer-requires/${fileRelPath}';`);
     }
+    const loaderBlob = await repo.writeBlob(loaderCodeLines.join('\n'));
+    outputTree.writeChild(`php-bootstraps/composer-requires.php`, loaderBlob);
 
 
     return outputTree;
